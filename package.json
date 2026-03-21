@@ -1,0 +1,73 @@
+{
+  "name": "zakiterm",
+  "version": "0.1.0",
+  "description": "Mac desktop SSH client with terminal, remote files, upload, and tunnel browser",
+  "author": "zengjiaqi",
+  "main": "out/main/index.js",
+  "type": "module",
+  "bin": {
+    "zakiterm": "bin/zakiterm.mjs"
+  },
+  "files": [
+    "bin",
+    "out",
+    "scripts",
+    "README.md"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build:icon": "node ./scripts/build-icon.mjs",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run typecheck && npm run build",
+    "postinstall": "node ./scripts/ensure-electron.mjs",
+    "start": "node ./bin/zakiterm.mjs",
+    "dist:dmg": "npm run build:icon && npm run build && electron-builder --mac dmg",
+    "dist:mac": "npm run build:icon && npm run build && electron-builder --mac dmg zip"
+  },
+  "build": {
+    "appId": "com.zjq.zakiterm",
+    "productName": "ZakiTerm",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "package.json",
+      "!node_modules/.cache/**/*"
+    ],
+    "mac": {
+      "icon": "assets/ZakiTerm.icns",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    }
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ssh2": "^1.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/ssh2": "^1.15.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^35.1.4",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.8.2",
+    "vite": "^5.4.14"
+  }
+}
