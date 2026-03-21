@@ -9,10 +9,10 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
-const sourceSvg = path.join(rootDir, 'assets', 'icon.svg');
 const sourcePng = path.join(rootDir, 'assets', 'icon-1024.png');
 const iconsetDir = path.join(rootDir, 'assets', 'ZakiTerm.iconset');
 const targetIcns = path.join(rootDir, 'assets', 'ZakiTerm.icns');
+const renderScript = path.join(rootDir, 'scripts', 'render_icon.py');
 
 const iconsetSizes = [
   { size: 16, name: 'icon_16x16.png' },
@@ -35,23 +35,19 @@ function run(command, args) {
   });
 }
 
-if (!fs.existsSync(sourceSvg)) {
-  console.error(`图标源文件不存在: ${sourceSvg}`);
+if (!fs.existsSync(renderScript)) {
+  console.error(`图标生成脚本不存在: ${renderScript}`);
   process.exit(1);
 }
 
 fs.rmSync(iconsetDir, { recursive: true, force: true });
 fs.mkdirSync(iconsetDir, { recursive: true });
+run('python', [renderScript]);
 
-run('qlmanage', ['-t', '-s', '1024', '-o', path.join(rootDir, 'assets'), sourceSvg]);
-
-const quicklookPng = path.join(rootDir, 'assets', 'icon.svg.png');
-if (!fs.existsSync(quicklookPng)) {
-  console.error('SVG 转 PNG 失败，未生成 Quick Look 缩略图。');
+if (!fs.existsSync(sourcePng)) {
+  console.error(`未生成原始 PNG 图标: ${sourcePng}`);
   process.exit(1);
 }
-
-fs.renameSync(quicklookPng, sourcePng);
 
 for (const item of iconsetSizes) {
   run('sips', ['-z', String(item.size), String(item.size), sourcePng, '--out', path.join(iconsetDir, item.name)]);

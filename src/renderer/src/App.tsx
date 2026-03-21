@@ -181,7 +181,7 @@ export default function App(): JSX.Element {
   const [activeView, setActiveView] = useState<ViewMode>('connect');
 
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('未连接');
+  const [message, setMessage] = useState('等待连接');
 
   const [workspacePath, setWorkspacePath] = useState('');
   const [browserRemoteHost, setBrowserRemoteHost] = useState('127.0.0.1');
@@ -195,10 +195,10 @@ export default function App(): JSX.Element {
     [sessions, activeSessionId]
   );
   const navigationItems: NavigationItem[] = [
-    { key: 'connect', label: '连接管理', hint: '配置与新建连接' },
-    { key: 'files', label: '文件传输', hint: '浏览、上传、下载' },
+    { key: 'connect', label: '连接管理', hint: '管理配置并快速连接' },
+    { key: 'files', label: '文件传输', hint: '浏览并传输远程文件' },
     { key: 'terminal', label: 'SSH 终端', hint: '命令行交互' },
-    { key: 'browser', label: '远程浏览器', hint: 'SSH 隧道访问' }
+    { key: 'browser', label: '远程浏览器', hint: '访问远程站点' }
   ];
 
   useEffect(() => {
@@ -224,7 +224,7 @@ export default function App(): JSX.Element {
       .getWorkspacePath()
       .then(setWorkspacePath)
       .catch(() => {
-        setWorkspacePath('工作区路径获取失败');
+        setWorkspacePath('暂时无法读取本地工作区路径');
       });
 
     void reloadProfiles().catch((error) => {
@@ -485,12 +485,12 @@ export default function App(): JSX.Element {
     }
 
     if (config.authType === 'privateKey' && !config.privateKeyPath?.trim()) {
-      setMessage('私钥模式下必须选择私钥文件。');
+      setMessage('私钥登录需要先选择私钥文件。');
       return;
     }
 
     setBusy(true);
-    setMessage('正在建立 SSH 连接...');
+    setMessage('正在连接服务器...');
 
     try {
       const result = await window.sshApi.connect(config);
@@ -517,7 +517,7 @@ export default function App(): JSX.Element {
 
       await loadChildren(result.sessionId, '/');
       await reloadRecentConnections();
-      setMessage(`连接成功: ${title}`);
+      setMessage(`已连接到 ${title}`);
 
       const terminal = terminalRef.current;
       const fitAddon = fitAddonRef.current;
@@ -573,7 +573,7 @@ export default function App(): JSX.Element {
         terminalRef.current?.clear();
       }
 
-      setMessage(`连接已断开: ${target.title}`);
+      setMessage(`已断开 ${target.title}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -618,7 +618,7 @@ export default function App(): JSX.Element {
 
     try {
       await loadChildren(activeSession.sessionId, targetPath);
-      setMessage(`目录已刷新: ${targetPath}`);
+      setMessage(`已刷新目录 ${targetPath}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     }
@@ -631,14 +631,14 @@ export default function App(): JSX.Element {
 
     const selectedNode = activeNodeMap.get(activeSession.selectedPath);
     if (!selectedNode || selectedNode.isDirectory) {
-      setMessage('请选择一个文件再下载。');
+      setMessage('请先选择要下载的文件。');
       return;
     }
 
     setBusy(true);
     try {
       const result = await window.sshApi.downloadFileToWorkspace(activeSession.sessionId, selectedNode.path);
-      setMessage(`下载完成: ${result.localPath}`);
+      setMessage(`已下载到 ${result.localPath}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -664,7 +664,7 @@ export default function App(): JSX.Element {
 
       setBusy(true);
       const result = await window.sshApi.uploadFile(activeSession.sessionId, localFile, remoteDir);
-      setMessage(`上传成功: ${result.remotePath}`);
+      setMessage(`已上传到 ${result.remotePath}`);
       await loadChildren(activeSession.sessionId, remoteDir);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
@@ -684,7 +684,7 @@ export default function App(): JSX.Element {
 
   async function openRemoteBrowserWindow(): Promise<void> {
     if (!activeSession) {
-      setMessage('请先建立 SSH 连接。');
+      setMessage('请先连接服务器。');
       return;
     }
 
@@ -698,7 +698,7 @@ export default function App(): JSX.Element {
         pathname: browserPathname
       });
 
-      setMessage(`远程浏览器已打开: ${result.url}`);
+      setMessage(`已打开远程页面 ${result.url}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -742,7 +742,7 @@ export default function App(): JSX.Element {
       await reloadProfiles();
       setSelectedProfileId(saved.id);
       setProfileName(saved.name);
-      setMessage(`配置已保存: ${saved.name}`);
+      setMessage(`已保存连接配置 ${saved.name}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -752,7 +752,7 @@ export default function App(): JSX.Element {
 
   async function deleteProfile(): Promise<void> {
     if (!selectedProfileId) {
-      setMessage('请先选择要删除的配置。');
+      setMessage('请先选择要删除的连接配置。');
       return;
     }
 
@@ -762,7 +762,7 @@ export default function App(): JSX.Element {
       await reloadProfiles();
       setSelectedProfileId('');
       setProfileName('');
-      setMessage('配置已删除。');
+      setMessage('已删除连接配置。');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -876,7 +876,7 @@ export default function App(): JSX.Element {
           <div className="brand-mark">SSH</div>
           <div>
             <h1>ZakiTerm</h1>
-            <p>把连接、文件、终端和隧道访问拆成独立工作区。</p>
+            <p>更轻松地连接服务器、管理文件并访问远程服务。</p>
           </div>
         </div>
 
@@ -914,7 +914,7 @@ export default function App(): JSX.Element {
           </div>
 
           <div className="session-list">
-            {sessions.length === 0 ? <div className="sidebar-empty">暂无连接，先去“连接管理”创建会话。</div> : null}
+            {sessions.length === 0 ? <div className="sidebar-empty">还没有会话，先在“连接管理”中创建连接。</div> : null}
             {sessions.map((session) => (
               <div
                 key={session.sessionId}
@@ -971,7 +971,7 @@ export default function App(): JSX.Element {
               </div>
             </div>
           ) : (
-            <p>建立连接后，这里会展示当前会话的主机、终端状态和文件概览。</p>
+            <p>连接后可在这里查看主机信息、终端状态和文件概览。</p>
           )}
 
           <div className="sidebar-section-head workspace-meta-head">
@@ -987,12 +987,12 @@ export default function App(): JSX.Element {
       <main className="workspace-shell">
         <header className="workspace-header">
           <div>
-            <span className="eyebrow">当前工作区</span>
+            <span className="eyebrow">当前视图</span>
             <h2>{navigationItems.find((item) => item.key === activeView)?.label}</h2>
           </div>
           <div className="workspace-summary">
-            <span>{activeSession ? activeSession.title : '未选择会话'}</span>
-            <span>{activeSession ? `当前路径 ${activeSession.selectedPath}` : '请先建立 SSH 连接'}</span>
+            <span>{activeSession ? activeSession.title : '尚未连接服务器'}</span>
+            <span>{activeSession ? `当前位置 ${activeSession.selectedPath}` : '连接后即可开始使用各项功能'}</span>
           </div>
         </header>
 
@@ -1076,17 +1076,17 @@ export default function App(): JSX.Element {
                 <div className="card-head">
                   <div>
                     <span className="card-kicker">Connect</span>
-                    <h3>新建 SSH 连接</h3>
+                    <h3>连接服务器</h3>
                   </div>
                 </div>
 
                 <div className="connect-row">
                   <label>
-                    Host
+                    主机地址
                     <input value={host} onChange={(event) => setHost(event.target.value)} disabled={busy} />
                   </label>
                   <label>
-                    Port
+                    端口
                     <input
                       type="number"
                       value={port}
@@ -1095,7 +1095,7 @@ export default function App(): JSX.Element {
                     />
                   </label>
                   <label>
-                    Username
+                    用户名
                     <input value={username} onChange={(event) => setUsername(event.target.value)} disabled={busy} />
                   </label>
                   <label>
@@ -1108,7 +1108,7 @@ export default function App(): JSX.Element {
 
                   {authType === 'password' ? (
                     <label>
-                      Password
+                      登录密码
                       <input
                         type="password"
                         value={password}
@@ -1142,7 +1142,7 @@ export default function App(): JSX.Element {
                   )}
 
                   <button className="btn-primary" onClick={() => void connect()} disabled={busy}>
-                    新建连接
+                    立即连接
                   </button>
                 </div>
               </section>
@@ -1155,21 +1155,21 @@ export default function App(): JSX.Element {
                 <div className="card-head">
                   <div>
                     <span className="card-kicker">Files</span>
-                    <h3>远程文件浏览</h3>
+                    <h3>文件浏览</h3>
                   </div>
                   <div className="card-actions">
                     <button className="btn-secondary" onClick={() => void refreshSelectedDir()} disabled={!activeSession || busy}>
-                      刷新目录
+                      刷新
                     </button>
                     <button className="btn-secondary" onClick={() => void openWorkspace()}>
-                      打开工作区
+                      打开本地工作区
                     </button>
                   </div>
                 </div>
 
                 <div className="selection-bar">
-                  <span>选中路径: {activeSession.selectedPath}</span>
-                  <span>{selectedNode ? (selectedNode.isDirectory ? '目录' : '文件') : '未选中'}</span>
+                  <span>当前选中: {activeSession.selectedPath}</span>
+                  <span>{selectedNode ? (selectedNode.isDirectory ? '文件夹' : '文件') : '未选择'}</span>
                 </div>
 
                 <div className="tree-wrap panel-scroll">
@@ -1178,15 +1178,15 @@ export default function App(): JSX.Element {
 
                 <div className="file-actions">
                   <button className="btn-secondary" onClick={() => void downloadSelected()} disabled={!activeSession || busy}>
-                    下载到工作区
+                    下载到本地工作区
                   </button>
                   <button className="btn-secondary" onClick={() => void uploadToSelectedDir()} disabled={!activeSession || busy}>
-                    上传到选中目录
+                    上传文件到当前目录
                   </button>
                 </div>
               </section>
             ) : (
-              renderEmptyState('暂无活动会话', '先在“连接管理”建立 SSH 连接，再进入文件传输视图。')
+              renderEmptyState('还没有连接', '先连接服务器，再浏览和传输远程文件。')
             )}
           </div>
 
@@ -1207,7 +1207,7 @@ export default function App(): JSX.Element {
                 <section className="content-card terminal-mount hidden-terminal-host">
                   <div className="terminal-wrap panel-fill" ref={terminalContainerRef} />
                 </section>
-                {renderEmptyState('终端待连接', '建立 SSH 会话后，这里会展示独立终端，不再和文件区混在一起。')}
+                {renderEmptyState('终端尚未就绪', '连接服务器后，即可在这里开始命令行操作。')}
               </>
             )}
           </div>
@@ -1222,7 +1222,7 @@ export default function App(): JSX.Element {
                   </div>
                   <div className="session-chip">{activeSession.title}</div>
                 </div>
-                <p className="card-intro">通过 SSH 隧道把远程 Web 服务映射到本地端口，再用新窗口打开。</p>
+                <p className="card-intro">将远程 Web 服务映射到本地窗口，方便直接访问和调试。</p>
                 <div className="browser-row">
                   <label>
                     协议
@@ -1235,11 +1235,11 @@ export default function App(): JSX.Element {
                     </select>
                   </label>
                   <label>
-                    远程Host
+                    远程主机
                     <input value={browserRemoteHost} onChange={(event) => setBrowserRemoteHost(event.target.value)} />
                   </label>
                   <label>
-                    远程Port
+                    远程端口
                     <input
                       type="number"
                       value={browserRemotePort}
@@ -1251,12 +1251,12 @@ export default function App(): JSX.Element {
                     <input value={browserPathname} onChange={(event) => setBrowserPathname(event.target.value)} />
                   </label>
                   <button className="btn-primary" onClick={() => void openRemoteBrowserWindow()} disabled={!activeSession || busy}>
-                    打开远程网页
+                    立即打开
                   </button>
                 </div>
               </section>
             ) : (
-              renderEmptyState('浏览器功能未激活', '只有建立 SSH 会话后，才能通过隧道打开远程站点。')
+              renderEmptyState('远程访问暂不可用', '连接服务器后，即可通过 SSH 隧道访问远程站点。')
             )}
           </div>
         </section>
