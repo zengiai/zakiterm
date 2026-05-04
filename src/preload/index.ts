@@ -5,6 +5,7 @@ import type {
   OpenRemoteBrowserRequest,
   RemoteBrowserErrorPayload,
   OpenRemoteBrowserResult,
+  RecentBrowserVisit,
   RecentConnection,
   RemoteEntry,
   ShellClosedPayload,
@@ -48,12 +49,18 @@ const api = {
   listDir: (sessionId: string, remotePath: string): Promise<RemoteEntry[]> =>
     ipcRenderer.invoke('ssh:list-dir', { sessionId, remotePath }),
   pickLocalFile: (): Promise<string | null> => ipcRenderer.invoke('file:pick-local'),
+  pickLocalDirectory: (): Promise<string | null> => ipcRenderer.invoke('file:pick-local-directory'),
   pickPrivateKeyFile: (): Promise<string | null> => ipcRenderer.invoke('file:pick-private-key'),
   uploadFile: (
     sessionId: string,
     localPath: string,
     remoteDir: string
   ): Promise<UploadResult> => ipcRenderer.invoke('ssh:upload-file', { sessionId, localPath, remoteDir }),
+  uploadDirectory: (
+    sessionId: string,
+    localPath: string,
+    remoteDir: string
+  ): Promise<UploadResult> => ipcRenderer.invoke('ssh:upload-directory', { sessionId, localPath, remoteDir }),
   downloadFileToWorkspace: (sessionId: string, remotePath: string): Promise<DownloadResult> =>
     ipcRenderer.invoke('ssh:download-file-to-workspace', { sessionId, remotePath }),
   getWorkspacePath: (): Promise<string> => ipcRenderer.invoke('workspace:get-path'),
@@ -62,6 +69,10 @@ const api = {
     ipcRenderer.invoke('connection:list-profiles'),
   listRecentConnections: (): Promise<RecentConnection[]> =>
     ipcRenderer.invoke('connection:list-recent'),
+  listRecentBrowserVisits: (): Promise<RecentBrowserVisit[]> =>
+    ipcRenderer.invoke('browser:list-recent'),
+  deleteRecentBrowserVisit: (id: string): Promise<void> =>
+    ipcRenderer.invoke('browser:delete-recent', id),
   upsertConnectionProfile: (input: UpsertConnectionProfileInput): Promise<ConnectionProfile> =>
     ipcRenderer.invoke('connection:upsert-profile', input),
   deleteConnectionProfile: (id: string): Promise<void> =>

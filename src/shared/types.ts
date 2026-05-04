@@ -44,6 +44,15 @@ export interface OpenRemoteBrowserResult {
   url: string;
 }
 
+export interface RecentBrowserVisit {
+  id: string;
+  remoteHost: string;
+  remotePort: number;
+  protocol: 'http' | 'https';
+  pathname: string;
+  lastOpenedAt: number;
+}
+
 export interface RemoteBrowserErrorPayload {
   sessionId: string;
   message: string;

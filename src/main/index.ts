@@ -10,6 +10,7 @@ import type {
   ConnectionProfile,
   OpenRemoteBrowserRequest,
   OpenRemoteBrowserResult,
+  RecentBrowserVisit,
   RecentConnection,
   RemoteEntry,
   SshConnectConfig,
@@ -23,6 +24,11 @@ interface SessionState {
   sftp?: SFTPWrapper;
   shellIds: Set<string>;
   tunnelPorts: Set<number>;
+}
+
+interface LocalUploadFile {
+  localPath: string;
+  relativePath: string;
 }
 
 const sessions = new Map<string, SessionState>();
@@ -71,6 +77,10 @@ function getRecentConnectionFilePath(): string {
   return path.join(app.getPath('userData'), 'recent-connections.json');
 }
 
+function getRecentBrowserVisitFilePath(): string {
+  return path.join(app.getPath('userData'), 'recent-browser-visits.json');
+}
+
 async function loadConnectionProfiles(): Promise<ConnectionProfile[]> {
   const filePath = getConnectionProfileFilePath();
   try {
@@ -107,6 +117,24 @@ async function loadRecentConnections(): Promise<RecentConnection[]> {
   }
 }
 
+async function loadRecentBrowserVisits(): Promise<RecentBrowserVisit[]> {
+  const filePath = getRecentBrowserVisitFilePath();
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed as RecentBrowserVisit[];
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+}
+
 async function saveConnectionProfiles(profiles: ConnectionProfile[]): Promise<void> {
   const filePath = getConnectionProfileFilePath();
   await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -117,6 +145,12 @@ async function saveRecentConnections(connections: RecentConnection[]): Promise<v
   const filePath = getRecentConnectionFilePath();
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify(connections, null, 2), 'utf-8');
+}
+
+async function saveRecentBrowserVisits(visits: RecentBrowserVisit[]): Promise<void> {
+  const filePath = getRecentBrowserVisitFilePath();
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify(visits, null, 2), 'utf-8');
 }
 
 async function recordRecentConnection(config: SshConnectConfig): Promise<void> {
@@ -139,6 +173,34 @@ async function recordRecentConnection(config: SshConnectConfig): Promise<void> {
   const nextConnections = connections.filter((item) => item.id !== identity);
   nextConnections.unshift(nextConnection);
   await saveRecentConnections(nextConnections.slice(0, 8));
+}
+
+function normalizeBrowserPathname(pathname: string): string {
+  const normalized = pathname.trim();
+  return normalized.startsWith('/') ? normalized : `/${normalized || ''}`;
+}
+
+async function recordRecentBrowserVisit(request: OpenRemoteBrowserRequest): Promise<void> {
+  const pathname = normalizeBrowserPathname(request.pathname);
+  const identity = `${request.protocol}://${request.remoteHost}:${request.remotePort}${pathname}`;
+  const visits = await loadRecentBrowserVisits();
+  const nextVisit: RecentBrowserVisit = {
+    id: identity,
+    remoteHost: request.remoteHost,
+    remotePort: request.remotePort,
+    protocol: request.protocol,
+    pathname,
+    lastOpenedAt: Date.now()
+  };
+
+  const nextVisits = visits.filter((item) => item.id !== identity);
+  nextVisits.unshift(nextVisit);
+  await saveRecentBrowserVisits(nextVisits.slice(0, 8));
+}
+
+async function deleteRecentBrowserVisit(id: string): Promise<void> {
+  const visits = await loadRecentBrowserVisits();
+  await saveRecentBrowserVisits(visits.filter((visit) => visit.id !== id));
 }
 
 async function upsertConnectionProfile(input: UpsertConnectionProfileInput): Promise<ConnectionProfile> {
@@ -191,6 +253,8 @@ async function createMainWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
     width: 1500,
     height: 900,
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 16, y: 17 },
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
@@ -421,6 +485,124 @@ async function uploadFile(sessionId: string, localPath: string, remoteDir: strin
   return remotePath;
 }
 
+async function statRemotePath(
+  sftp: SFTPWrapper,
+  remotePath: string
+): Promise<{ exists: boolean; isDirectory: boolean }> {
+  return await new Promise((resolve, reject) => {
+    sftp.stat(remotePath, (error, attrs) => {
+      if (error) {
+        const code = String((error as NodeJS.ErrnoException).code ?? '');
+        if (code === '2' || code === 'ENOENT') {
+          resolve({ exists: false, isDirectory: false });
+          return;
+        }
+        reject(error);
+        return;
+      }
+
+      resolve({
+        exists: true,
+        isDirectory: Boolean(attrs?.isDirectory?.())
+      });
+    });
+  });
+}
+
+async function mkdirRemote(sftp: SFTPWrapper, remotePath: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    sftp.mkdir(remotePath, (error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+async function ensureRemoteDir(sftp: SFTPWrapper, remotePath: string): Promise<void> {
+  const normalizedPath = normalizeRemotePath(remotePath);
+  if (normalizedPath === '/') {
+    return;
+  }
+
+  const segments = normalizedPath.split('/').filter(Boolean);
+  let currentPath = '/';
+
+  for (const segment of segments) {
+    currentPath = path.posix.join(currentPath, segment);
+    const stat = await statRemotePath(sftp, currentPath);
+    if (stat.exists) {
+      if (!stat.isDirectory) {
+        throw new Error(`远程路径 ${currentPath} 已存在且不是目录。`);
+      }
+      continue;
+    }
+    await mkdirRemote(sftp, currentPath);
+  }
+}
+
+async function listLocalFiles(rootPath: string): Promise<LocalUploadFile[]> {
+  const result: LocalUploadFile[] = [];
+
+  async function walk(currentPath: string): Promise<void> {
+    const entries = await fs.readdir(currentPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const nextPath = path.join(currentPath, entry.name);
+      if (entry.isDirectory()) {
+        await walk(nextPath);
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      result.push({
+        localPath: nextPath,
+        relativePath: path.relative(rootPath, nextPath)
+      });
+    }
+  }
+
+  await walk(rootPath);
+  result.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  return result;
+}
+
+async function uploadDirectory(sessionId: string, localDirPath: string, remoteDir: string): Promise<string> {
+  const sftp = await getSftp(sessionId);
+  const normalizedRemoteDir = normalizeRemotePath(remoteDir);
+  const directoryName = path.basename(localDirPath);
+  const remoteRootPath = path.posix.join(normalizedRemoteDir, directoryName);
+
+  const localStat = await fs.stat(localDirPath);
+  if (!localStat.isDirectory()) {
+    throw new Error('本地路径不是文件夹。');
+  }
+
+  await ensureRemoteDir(sftp, remoteRootPath);
+  const files = await listLocalFiles(localDirPath);
+
+  for (const file of files) {
+    const relativePath = file.relativePath.split(path.sep).join(path.posix.sep);
+    const remotePath = path.posix.join(remoteRootPath, relativePath);
+    await ensureRemoteDir(sftp, path.posix.dirname(remotePath));
+    await new Promise<void>((resolve, reject) => {
+      sftp.fastPut(file.localPath, remotePath, (error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+
+  return remoteRootPath;
+}
+
 async function openShell(sessionId: string): Promise<string> {
   const session = resolveSession(sessionId);
   const stream = await new Promise<ClientChannel>((resolve, reject) => {
@@ -560,7 +742,7 @@ async function openRemoteBrowser(
   tunnelServers.set(localPort, server);
   session.tunnelPorts.add(localPort);
 
-  const normalizedPath = request.pathname.startsWith('/') ? request.pathname : `/${request.pathname}`;
+  const normalizedPath = normalizeBrowserPathname(request.pathname);
   const url = `${request.protocol}://127.0.0.1:${localPort}${normalizedPath}`;
 
   const browserWindow = new BrowserWindow({
@@ -582,6 +764,11 @@ async function openRemoteBrowser(
   browserWindow.on('closed', () => {
     void closeTunnel(localPort);
     session.tunnelPorts.delete(localPort);
+  });
+
+  await recordRecentBrowserVisit({
+    ...request,
+    pathname: normalizedPath
   });
 
   return { localPort, url };
@@ -631,10 +818,33 @@ ipcMain.handle(
   }
 );
 
+ipcMain.handle(
+  'ssh:upload-directory',
+  async (_event, payload: { sessionId: string; localPath: string; remoteDir: string }) => {
+    try {
+      const remotePath = await uploadDirectory(payload.sessionId, payload.localPath, payload.remoteDir);
+      return { remotePath };
+    } catch (error) {
+      throw new Error(`上传文件夹失败: ${toErrorMessage(error)}`);
+    }
+  }
+);
+
 ipcMain.handle('file:pick-local', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
     title: '选择要上传的本地文件'
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  return result.filePaths[0];
+});
+
+ipcMain.handle('file:pick-local-directory', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory'],
+    title: '选择要上传的本地文件夹'
   });
   if (result.canceled || result.filePaths.length === 0) {
     return null;
@@ -667,6 +877,14 @@ ipcMain.handle('connection:list-profiles', async () => {
 
 ipcMain.handle('connection:list-recent', async () => {
   return await loadRecentConnections();
+});
+
+ipcMain.handle('browser:list-recent', async () => {
+  return await loadRecentBrowserVisits();
+});
+
+ipcMain.handle('browser:delete-recent', async (_event, id: string) => {
+  await deleteRecentBrowserVisit(id);
 });
 
 ipcMain.handle('connection:upsert-profile', async (_event, input: UpsertConnectionProfileInput) => {
