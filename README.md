@@ -1,53 +1,43 @@
 # ZakiTerm
 
-ZakiTerm 是一个面向 macOS 的桌面 SSH 客户端，定位是“轻量、直接、可发布”的终端工具。它基于 Electron + React + TypeScript 构建，支持 SSH 终端、多会话切换、SFTP 文件传输，以及通过 SSH 隧道打开远程 Web 页面。
+ZakiTerm 是一个面向 macOS 的开源桌面 SSH 客户端，基于 Electron、React 和 TypeScript 构建。它把 SSH 终端、SFTP 文件传输、连接配置管理和远程 Web 隧道访问放在同一个桌面应用里，适合日常服务器运维、远程开发和 Electron 桌面应用学习。
 
-这个项目适合两类人：
+![ZakiTerm 首页](./assets/zakiterm-home.png)
 
-- 想直接下载一个可用的 SSH 桌面工具的人
-- 想学习 Electron 桌面应用、SSH 会话管理、SFTP 文件操作和 macOS 打包发布流程的人
+## 适合谁使用
 
-## 项目亮点
+- 需要一个轻量 SSH 桌面客户端的开发者
+- 希望在一个窗口里完成终端、文件传输和远程服务访问的人
+- 想学习 Electron 主进程、预加载层、React 渲染层如何分工的开发者
+- 想参考 macOS 桌面应用打包、图标生成和 npm CLI 分发流程的维护者
 
-- 终端、文件、远程浏览器三个高频能力整合在一个应用里
-- 支持多会话
-- 支持密码登录和私钥登录
-- 支持保存连接配置和最近连接
-- 支持以 npm 包形式分发
-- 支持打包成 macOS `dmg`
-- 项目结构清晰，适合继续演进
+## 核心能力
 
-## 功能列表
-
-- SSH 终端控制台（`xterm`）
-- 多会话管理
-- 远程目录浏览（SFTP）
-- 上传文件到远程目录
-- 下载文件到本地工作区
-- 通过 SSH 隧道打开远程网页
-- 保存连接配置
-- 自动记录最近成功连接
-- 自定义 `ZakiTerm` 应用图标
+- SSH 终端：基于 `xterm` 提供交互式 Shell
+- 多会话管理：支持多个 SSH 会话并行切换
+- 连接配置：支持保存常用主机、认证方式和最近连接
+- SFTP 文件管理：浏览远程目录，上传和下载文件
+- 远程浏览器：通过 SSH 隧道打开远端 Web 服务
+- macOS 打包：支持生成 `.dmg` 和 `.zip` 安装包
+- CLI 启动：支持通过 npm 全局安装后使用 `zakiterm` 启动应用
 
 ## 技术栈
 
 - Electron
-- React
+- React 18
 - TypeScript
 - electron-vite
 - ssh2
 - xterm
 - electron-builder
 
-## 运行环境
+## 快速开始
+
+环境要求：
 
 - macOS
 - Node.js 18+
 - npm 9+
-
-## 快速开始
-
-### 本地开发
 
 安装依赖：
 
@@ -61,214 +51,125 @@ npm install
 npm run dev
 ```
 
-常用命令：
+类型检查：
 
 ```bash
 npm run typecheck
+```
+
+构建产物：
+
+```bash
 npm run build
-npm run build:icon
 ```
 
-## 作为应用使用
+## 安装使用
 
-### 方式一：通过 npm 安装
-
-适合开发者用户，也适合希望用命令升级版本的人。
-
-安装：
+从源码本地启动：
 
 ```bash
-npm install -g zakiterm
+npm install
+npm run dev
 ```
 
-启动：
-
-```bash
-zakiterm
-```
-
-查看版本：
-
-```bash
-zakiterm --version
-```
-
-更新：
-
-```bash
-npm install -g zakiterm@latest
-```
-
-说明：
-
-- 首次安装会补充 Electron 运行时
-- 首次安装耗时会比普通 CLI 包长一点
-- `zakiterm` 这个包名发布前需要自行确认是否已被占用
-
-### 方式二：通过 dmg 安装
-
-适合普通 macOS 用户。
-
-使用方式：
-
-1. 从 GitHub Releases 下载最新 `.dmg`
-2. 双击打开镜像
-3. 将 `ZakiTerm.app` 拖入 `Applications`
-4. 从启动台或应用程序目录打开
-
-更新方式：
-
-1. 下载新的 `.dmg`
-2. 用新版本覆盖 `Applications` 中的旧版本
-
-## 项目结构
-
-```text
-src/
-  main/         Electron 主进程：SSH 会话、SFTP、隧道、IPC
-  preload/      安全桥接层：向渲染进程暴露受控 API
-  renderer/     React 前端界面
-  shared/       主进程 / 渲染进程共享类型
-assets/
-  icon.svg      图标母稿
-  ZakiTerm.icns macOS 应用图标
-bin/
-  zakiterm.mjs  npm 安装后的启动入口
-scripts/
-  build-icon.mjs       生成图标资源
-  ensure-electron.mjs  npm 安装后补充 Electron 运行时
-out/
-  Electron / Vite 构建输出
-dist/
-  electron-builder 生成的 dmg / zip
-```
-
-## 架构说明
-
-### 主进程
-
-主进程负责所有 Node 能力和系统能力，包括：
-
-- 建立 SSH 连接
-- 打开 Shell
-- 打开 SFTP 会话
-- 建立本地端口转发
-- 打开 Electron 主窗口和远程浏览器窗口
-
-### 预加载层
-
-预加载层通过 `contextBridge` 暴露 `window.sshApi`，保证渲染层不能直接接触危险的 Node 能力。
-
-### 渲染层
-
-渲染层负责 UI 展示和交互逻辑，包括：
-
-- 左侧导航和会话管理
-- 连接配置与最近连接
-- 终端展示
-- 文件树展示
-- 远程浏览器表单与状态反馈
-
-## 设计思路
-
-这个项目没有追求“大而全”，而是优先把几个高频场景做通：
-
-- 连接远程机器
-- 在终端里执行命令
-- 浏览和传输文件
-- 打开远程 Web 服务
-
-在实现上遵循了这几个原则：
-
-- 尽量把系统能力收敛在主进程
-- 渲染层只负责交互和状态展示
-- 连接信息和最近连接做本地持久化
-- 先完成第一版可用产品，再逐步增强工程能力
-
-## 发布指南
-
-### 发布 npm 包
-
-更新版本号：
-
-```bash
-npm version patch
-```
-
-登录 npm：
-
-```bash
-npm login
-```
-
-发布：
-
-```bash
-npm publish
-```
-
-说明：
-
-- 发布前会自动执行 `prepack`
-- `prepack` 会自动跑 `typecheck + build`
-
-### 构建 dmg
-
-生成 `dmg`：
+构建 macOS 安装包：
 
 ```bash
 npm run dist:dmg
 ```
 
-生成 `dmg + zip`：
+构建完成后，安装包会输出到 `dist/` 目录。
+
+如果项目已经发布到 npm，也可以全局安装后启动：
 
 ```bash
-npm run dist:mac
+npm install -g zakiterm
+zakiterm
 ```
 
-产物在：
+## 项目结构
 
 ```text
+src/
+  main/         Electron 主进程：SSH、SFTP、端口转发、窗口管理、IPC
+  preload/      预加载层：通过 contextBridge 暴露受控 API
+  renderer/     React 渲染层：页面、状态和用户交互
+  shared/       主进程与渲染进程共享类型
+assets/
+  icon.svg              图标源文件
+  ZakiTerm.icns         macOS 应用图标
+  zakiterm-home.png     README 首页截图
+bin/
+  zakiterm.mjs          npm 全局安装后的启动入口
+scripts/
+  build-icon.mjs        生成 macOS 图标资源
+  ensure-electron.mjs   npm 安装后补充 Electron 运行时
+out/
+  Electron / Vite 构建输出
 dist/
+  electron-builder 生成的安装包
 ```
 
-### 发布 GitHub Release
+## 架构说明
 
-推荐流程：
+ZakiTerm 采用典型 Electron 分层：
 
-1. 推送代码和 tag
-2. 运行 `npm run dist:mac`
-3. 在 GitHub Releases 上传 `.dmg` 和 `.zip`
-4. 在 Release 描述里写清楚版本、改动点和安装方式
+- 主进程负责系统能力，包括 SSH 连接、Shell 通道、SFTP、文件选择、下载目录、SSH 隧道和窗口生命周期
+- 预加载层通过 `contextBridge` 暴露 `window.sshApi`，限制渲染层直接访问 Node 能力
+- 渲染层只负责界面状态、用户交互、会话切换、终端展示和文件树展示
+- 共享类型集中在 `src/shared`，减少 IPC 调用两侧的类型漂移
 
-## 用户数据
+这个分层能让高权限能力收敛在主进程，渲染层保持相对简单，也方便后续接入更严格的权限控制和安全存储。
 
-应用会在 Electron `userData` 目录下保存本地数据，例如：
+## 常用命令
+
+```bash
+npm run dev          # 启动开发环境
+npm run typecheck    # TypeScript 类型检查
+npm run build        # 构建 Electron / Vite 产物
+npm run build:icon   # 生成 macOS 图标
+npm run dist:dmg     # 构建 dmg 安装包
+npm run dist:mac     # 构建 dmg 和 zip
+```
+
+## 数据与安全
+
+应用会在 Electron `userData` 目录下保存本地数据：
 
 - `connection-profiles.json`
 - `recent-connections.json`
+- `recent-browser-visits.json`
 
-## 当前限制
+当前版本仍处于早期阶段，需要注意：
 
-- 当前密码仍属于本地明文存储
-- 当前版本更适合作为第一版产品验证
-- 当前未做 Apple Developer 签名和 notarization
-- 当前未做自动更新
+- 密码和私钥口令尚未接入系统 Keychain
+- 应用未做 Apple Developer 签名和 notarization
+- 暂未内置自动更新
+- 生产环境使用前建议先评估本地凭据存储策略
+
+## 贡献指南
+
+欢迎围绕以下方向提交 Issue 或 Pull Request：
+
+- 接入 macOS Keychain，避免明文保存敏感信息
+- 增强多会话、标签页和连接分组体验
+- 改进 SFTP 文件操作能力
+- 增加远程监控、端口转发和服务探测能力
+- 补充自动化测试、CI 构建和 Release 流程
+- 完善签名、公证和自动更新链路
+
+提交改动前建议至少运行：
+
+```bash
+npm run typecheck
+npm run build
+```
 
 ## 路线图
 
-- 接入系统安全存储（Keychain）
-- 增加应用签名与公证
-- 增加自动更新
-- 增加 GitHub Actions 自动打包与发布
-- 增加更多连接管理能力
-
-## 适合继续扩展的方向
-
-- 标签式会话管理增强
-- 更强的文件操作体验
-- 远程监控与系统信息面板
-- 连接收藏和分组
-- 更完整的发布流水线
-
-如果你是第一次接触 Electron 项目，这个仓库也很适合作为一个完整的小型桌面应用参考。
+- 系统安全存储：接入 Keychain
+- 发布工程化：GitHub Actions 自动打包和发布
+- 应用更新：增加自动更新能力
+- 会话体验：连接收藏、分组、标签页增强
+- 文件能力：批量上传、下载队列、冲突处理
+- 远程能力：更多 SSH 隧道与远程服务调试场景
