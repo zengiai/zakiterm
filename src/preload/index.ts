@@ -63,6 +63,8 @@ const api = {
   ): Promise<UploadResult> => ipcRenderer.invoke('ssh:upload-directory', { sessionId, localPath, remoteDir }),
   downloadFileToWorkspace: (sessionId: string, remotePath: string): Promise<DownloadResult> =>
     ipcRenderer.invoke('ssh:download-file-to-workspace', { sessionId, remotePath }),
+  downloadDirectoryToWorkspace: (sessionId: string, remotePath: string): Promise<DownloadResult> =>
+    ipcRenderer.invoke('ssh:download-directory-to-workspace', { sessionId, remotePath }),
   getWorkspacePath: (): Promise<string> => ipcRenderer.invoke('workspace:get-path'),
   revealWorkspace: (): Promise<string> => ipcRenderer.invoke('workspace:reveal'),
   listConnectionProfiles: (): Promise<ConnectionProfile[]> =>

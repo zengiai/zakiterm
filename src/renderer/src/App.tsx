@@ -774,15 +774,28 @@ export default function App(): JSX.Element {
     }
 
     const selectedNode = activeNodeMap.get(activeSession.selectedPath);
-    if (!selectedNode || selectedNode.isDirectory) {
-      setMessage('请先选择要下载的文件。');
+    if (!selectedNode) {
+      setMessage('请先选择要下载的文件或文件夹。');
+      return;
+    }
+
+    if (selectedNode.isDirectory && selectedNode.path === '/') {
+      setMessage('暂不支持直接下载远程根目录，请选择具体文件夹。');
       return;
     }
 
     setBusy(true);
     try {
+      if (selectedNode.isDirectory) {
+        setMessage(`正在下载文件夹 ${selectedNode.path} 到本地工作区...`);
+        const result = await window.sshApi.downloadDirectoryToWorkspace(activeSession.sessionId, selectedNode.path);
+        setMessage(`已下载文件夹到 ${result.localPath}`);
+        return;
+      }
+
+      setMessage(`正在下载文件 ${selectedNode.path} 到本地工作区...`);
       const result = await window.sshApi.downloadFileToWorkspace(activeSession.sessionId, selectedNode.path);
-      setMessage(`已下载到 ${result.localPath}`);
+      setMessage(`已下载文件到 ${result.localPath}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {

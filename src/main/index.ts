@@ -402,17 +402,20 @@ async function connectSsh(config: SshConnectConfig): Promise<SshConnectResult> {
 async function listRemoteDir(sessionId: string, remotePath: string): Promise<RemoteEntry[]> {
   const sftp = await getSftp(sessionId);
   const normalized = normalizeRemotePath(remotePath);
+  return await readRemoteDir(sftp, normalized);
+}
 
+async function readRemoteDir(sftp: SFTPWrapper, remotePath: string): Promise<RemoteEntry[]> {
   const items = await new Promise<RemoteEntry[]>((resolve, reject) => {
-    sftp.readdir(normalized, (error, list) => {
+    sftp.readdir(remotePath, (error, list) => {
       if (error || !list) {
         reject(error ?? new Error('读取远程目录失败。'));
         return;
       }
 
-      const mapped = list.map((entry) => {
+      const mapped = list.filter((entry) => entry.filename !== '.' && entry.filename !== '..').map((entry) => {
         const fullPath =
-          normalized === '/' ? `/${entry.filename}` : path.posix.join(normalized, entry.filename);
+          remotePath === '/' ? `/${entry.filename}` : path.posix.join(remotePath, entry.filename);
         const isDirectory = Boolean(entry.attrs?.isDirectory?.());
         return {
           name: entry.filename,
@@ -437,22 +440,22 @@ async function listRemoteDir(sessionId: string, remotePath: string): Promise<Rem
   return items;
 }
 
-async function downloadFileToWorkspace(sessionId: string, remotePath: string): Promise<string> {
-  const sftp = await getSftp(sessionId);
+async function createWorkspaceTargetPath(baseName: string): Promise<string> {
   const workspace = await ensureWorkspaceDir();
-  const baseName = path.posix.basename(remotePath);
-  const targetPath = path.join(workspace, baseName);
+  const resolvedBaseName = baseName.trim() === '' ? 'remote-download' : baseName;
+  const targetPath = path.join(workspace, resolvedBaseName);
 
-  let finalPath = targetPath;
   try {
-    await fs.access(finalPath);
-    finalPath = path.join(workspace, `${Date.now()}-${baseName}`);
+    await fs.access(targetPath);
+    return path.join(workspace, `${Date.now()}-${resolvedBaseName}`);
   } catch {
-    // 文件不存在时直接使用原始路径。
+    return targetPath;
   }
+}
 
+async function downloadRemoteFile(sftp: SFTPWrapper, remotePath: string, localPath: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    sftp.fastGet(remotePath, finalPath, (error) => {
+    sftp.fastGet(remotePath, localPath, (error) => {
       if (error) {
         reject(error);
         return;
@@ -460,8 +463,60 @@ async function downloadFileToWorkspace(sessionId: string, remotePath: string): P
       resolve();
     });
   });
+}
+
+async function downloadFileToWorkspace(sessionId: string, remotePath: string): Promise<string> {
+  const sftp = await getSftp(sessionId);
+  const normalizedRemotePath = normalizeRemotePath(remotePath);
+  const baseName = path.posix.basename(normalizedRemotePath);
+  const finalPath = await createWorkspaceTargetPath(baseName);
+
+  await downloadRemoteFile(sftp, normalizedRemotePath, finalPath);
 
   return finalPath;
+}
+
+async function downloadRemoteDirectory(
+  sftp: SFTPWrapper,
+  remoteDirPath: string,
+  localDirPath: string
+): Promise<void> {
+  const entries = await readRemoteDir(sftp, remoteDirPath);
+
+  for (const entry of entries) {
+    const localEntryPath = path.join(localDirPath, entry.name);
+
+    if (entry.isDirectory) {
+      await fs.mkdir(localEntryPath, { recursive: true });
+      await downloadRemoteDirectory(sftp, entry.path, localEntryPath);
+      continue;
+    }
+
+    await downloadRemoteFile(sftp, entry.path, localEntryPath);
+  }
+}
+
+async function downloadDirectoryToWorkspace(sessionId: string, remotePath: string): Promise<string> {
+  const sftp = await getSftp(sessionId);
+  const normalizedRemotePath = normalizeRemotePath(remotePath);
+
+  if (normalizedRemotePath === '/') {
+    throw new Error('暂不支持直接下载远程根目录，请选择具体文件夹。');
+  }
+
+  const remoteStat = await statRemotePath(sftp, normalizedRemotePath);
+  if (!remoteStat.exists) {
+    throw new Error(`远程文件夹 ${normalizedRemotePath} 不存在。`);
+  }
+  if (!remoteStat.isDirectory) {
+    throw new Error(`远程路径 ${normalizedRemotePath} 不是文件夹。`);
+  }
+
+  const localRootPath = await createWorkspaceTargetPath(path.posix.basename(normalizedRemotePath));
+  await fs.mkdir(localRootPath, { recursive: true });
+  await downloadRemoteDirectory(sftp, normalizedRemotePath, localRootPath);
+
+  return localRootPath;
 }
 
 async function uploadFile(sessionId: string, localPath: string, remoteDir: string): Promise<string> {
@@ -802,6 +857,18 @@ ipcMain.handle(
       return { localPath };
     } catch (error) {
       throw new Error(`下载文件失败: ${toErrorMessage(error)}`);
+    }
+  }
+);
+
+ipcMain.handle(
+  'ssh:download-directory-to-workspace',
+  async (_event, payload: { sessionId: string; remotePath: string }) => {
+    try {
+      const localPath = await downloadDirectoryToWorkspace(payload.sessionId, payload.remotePath);
+      return { localPath };
+    } catch (error) {
+      throw new Error(`下载文件夹失败: ${toErrorMessage(error)}`);
     }
   }
 );
